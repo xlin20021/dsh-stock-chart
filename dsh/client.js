@@ -95,7 +95,6 @@ window.__ModuleLoader__.load({
                   .catch(function (e) { setSaving(false); setMsg('保存失败：' + e.message) })
               }
               var inputStyle = { width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontFamily: 'inherit', fontSize: '13px' }
-              var areaStyle = { width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontFamily: 'inherit', fontSize: '13px', minHeight: 72, whiteSpace: 'pre' }
               return h('div', { style: { padding: '12px', fontSize: '13px' } },
                 h('div', { style: { fontWeight: 600, marginBottom: 8 } }, 'dsh-stock-chart 配置'),
                 FIELDS.map(function (f) {
@@ -104,10 +103,6 @@ window.__ModuleLoader__.load({
                     h('input', { style: inputStyle, value: cfg[f[0]] || '', placeholder: f[2], onChange: function (e) { patch(f[0], e.target.value) } }),
                   )
                 }),
-                h('div', { key: 'skillPaths', style: { marginBottom: 8 } },
-                  h('label', { style: { display: 'block', marginBottom: 2, color: '#666' } }, 'Skill（可选）'),
-                  h('textarea', { style: areaStyle, value: (cfg.skillPaths || []).join('\n'), placeholder: '每行一个技能目录路径（含 SKILL.md），例如：\nE:\\DS-stock\\.reasonix\\skills\\a_stock_data', onChange: function (e) { patch('skillPaths', e.target.value.split('\n').map(function (s) { return s.trim() }).filter(Boolean)) } }),
-                ),
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
                   h('button', { style: { padding: '4px 14px', border: '1px solid #1f6feb', background: '#1f6feb', color: '#fff', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }, onClick: save }, saving ? '保存中…' : '保存'),
                   msg ? h('span', { style: { color: msg.indexOf('失败') >= 0 ? '#c00' : '#0a0' } }, msg) : null,

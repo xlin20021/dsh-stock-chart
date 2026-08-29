@@ -66,7 +66,6 @@ node E:\dsh\dsh-stock-chart\stk-fetch.mjs <symbol> mootdx|mcp
 | 字段 | 说明 | 默认 |
 |---|---|---|
 | **Python 路径** | mootdx 取数用 Python 可执行文件 | `python`（PATH）|
-| **Skill（可选）** | 技能目录，textarea **每行一个**（含 `SKILL.md` 的目录）| 空 |
 | **股票 MCP 服务器名** | 插件读取 dsh 已配置的 MCP 服务器名 | `stock` |
 | **数据目录** | SQLite 存放处 | `~/.dsh/stkdata` |
 
@@ -75,11 +74,7 @@ node E:\dsh\dsh-stock-chart\stk-fetch.mjs <symbol> mootdx|mcp
 ```json
 {
   "pythonPath": "D:/miniconda3/envs/stock_data/python.exe",
-  "mcpServerName": "stock",
-  "skillPaths": [
-    "E:\\DS-stock\\.reasonix\\skills\\a_stock_data",
-    "C:\\Users\\Administrator\\.config\\opencode\\skills\\a_stock_data"
-  ]
+  "mcpServerName": "stock"
 }
 ```
 

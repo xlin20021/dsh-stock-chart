@@ -35,15 +35,6 @@ function writeConfig(cfg) {
   for (const k of ["pythonPath", "mcpServerName", "dataDir"]) {
     if (typeof cfg[k] === "string") clean[k] = cfg[k].trim();
   }
-  if (Array.isArray(cfg.skillPaths)) {
-    const seen = new Set();
-    clean.skillPaths = [];
-    for (const s of cfg.skillPaths) {
-      if (typeof s !== "string") continue;
-      const t = s.trim();
-      if (t && !seen.has(t)) { seen.add(t); clean.skillPaths.push(t); }
-    }
-  }
   writeFileSync(configPath(), JSON.stringify(clean, null, 2) + "\n");
   return clean;
 }
@@ -347,7 +338,6 @@ export function apply(ctx) {
   try {
     ctx.settings.register(settingsNamespace("stock-chart"), z.object({
       pythonPath: z.string().default(""),
-      skillPaths: z.array(z.string()).default([]),
       mcpServerName: z.string().default("stock"),
       dataDir: z.string().default(""),
     }));
