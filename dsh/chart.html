@@ -1,0 +1,257 @@
+﻿<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>股票图表</title>
+<style>
+html,body{margin:0;padding:0;height:100%;background:#fff;color:#1c1e21;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#head{display:flex;align-items:baseline;gap:10px;padding:6px 12px;border-bottom:1px solid #e5e7eb;background:#fafafa;font-size:12px}
+#name{font-size:15px;font-weight:700}
+#sym{color:#6b7280}
+#last{font-weight:600}
+.up{color:#e53935}.down{color:#26a69a}
+#zoom{margin-left:auto;border:1px solid #1f6feb;background:#1f6feb;color:#fff;border-radius:6px;padding:3px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+#zoom:hover{background:#1a5fd0}
+#options{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:5px 12px;border-bottom:1px solid #e5e7eb;background:#f5f6f8;font-size:12px}
+#options label{display:inline-flex;align-items:center;gap:3px;cursor:pointer}
+#options .grp{color:#9ca3af;margin-right:2px}
+#toolbar{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;padding:5px 12px;border-bottom:1px solid #e5e7eb;background:#f7f7f8;font-size:12px;max-height:120px;overflow:auto}
+#toolbar details{border:1px solid #d1d5db;border-radius:6px;padding:2px 6px;background:#fff}
+#toolbar summary{cursor:pointer;user-select:none;color:#333;padding:2px 2px;outline:none}
+#toolbar details[open] summary{color:#1f6feb}
+#toolbar .catbox{display:flex;flex-wrap:wrap;gap:3px;padding:4px 0 2px}
+#toolbar button{border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:1px 7px;font-size:12px;cursor:pointer;color:#333}
+#toolbar button:hover{background:#eef2ff}
+#toolbar button.active{background:#1f6feb;color:#fff;border-color:#1f6feb}
+#chart{width:100%;height:calc(100% - 124px)}
+#err{display:none;padding:16px;color:#b91c1c;font-size:13px}
+#cache{display:none;padding:2px 12px;background:#fff7e6;color:#b45309;font-size:11px}
+</style>
+</head>
+<body>
+<div id="head"><span id="name">—</span><span id="sym"></span><span id="last"></span><button id="zoom" title="在新标签页全屏打开图表">放大</button></div>
+<div id="options"></div>
+<div id="toolbar"></div>
+<div id="cache"></div>
+<div id="chart"></div>
+<div id="err"></div>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts-drawing@0.1.1/dist/lightweight-charts-drawing.umd.js"></script>
+<!--
+  Third-party attribution:
+  - Lightweight Charts (TradingView) — Apache-2.0 — https://www.tradingview.com/lightweight-charts/
+  - lightweight-charts-drawing — MIT — https://github.com/ismailhamadouche/lightweight-charts-drawing
+  See the plugin's NOTICE file for full license text.
+-->
+<script>
+(function(){
+var qs = new URLSearchParams(location.search);
+var symbol = (qs.get("symbol") || "").trim();
+var nameEl = document.getElementById("name");
+var symEl = document.getElementById("sym");
+var lastEl = document.getElementById("last");
+var zoomEl = document.getElementById("zoom");
+var optionsEl = document.getElementById("options");
+var toolbarEl = document.getElementById("toolbar");
+var cacheEl = document.getElementById("cache");
+var chartEl = document.getElementById("chart");
+var errEl = document.getElementById("err");
+var chart = null;
+var data = null;
+var opts = { mode: "daily", macd:true, kdj:true, boll:true, MA5:true, MA10:true, MA20:true, MA60:true, MA120:false };
+var OPT_KEY = "dsh-stock-chart:opts:" + symbol;
+var DATA_KEY = "dsh-stock-chart:data:" + symbol;
+function fail(msg){ errEl.style.display="block"; errEl.textContent=msg; chartEl.style.display="none"; }
+if(!symbol){ fail("缺少 ?symbol= 参数"); return; }
+symEl.textContent = symbol;
+// 放大：新标签页打开当前图表（保留显示选项）
+zoomEl.addEventListener("click", function(){ window.open(location.href.split("?")[0] + "?symbol=" + encodeURIComponent(symbol) + "&full=1", "_blank"); });
+try { var so = localStorage.getItem(OPT_KEY); if(so){ var p = JSON.parse(so); for(var k in p){ if(k in opts) opts[k] = p[k]; } } } catch(e){}
+function saveOpts(){ try { localStorage.setItem(OPT_KEY, JSON.stringify(opts)); } catch(e){} }
+function buildOptions(){
+  optionsEl.innerHTML = "";
+  var wlab = document.createElement("label");
+  var wcb = document.createElement("input"); wcb.type="checkbox"; wcb.checked = opts.mode === "weekly";
+  wcb.onchange = function(){ opts.mode = wcb.checked ? "weekly" : "daily"; saveOpts(); rebuild(); };
+  wlab.appendChild(wcb); wlab.appendChild(document.createTextNode("周线"));
+  optionsEl.appendChild(wlab);
+  var labels = ["K线","成交量","MACD","KDJ","BOLL","MA5","MA10","MA20","MA60","MA120"];
+  var keys = [null,null,"macd","kdj","boll","MA5","MA10","MA20","MA60","MA120"];
+  var fixed = [true,true,false,false,false,false,false,false,false,false];
+  var g = document.createElement("span"); g.className="grp"; g.textContent="显示："; optionsEl.appendChild(g);
+  for(var i=0;i<labels.length;i++){
+    var lab = document.createElement("label");
+    var cb = document.createElement("input"); cb.type="checkbox";
+    if(fixed[i]){ cb.checked = true; cb.disabled = true; }
+    else { (function(key, box){ box.checked = !!opts[key]; box.onchange = function(){ opts[key] = box.checked; saveOpts(); rebuild(); }; })(keys[i], cb); }
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(labels[i]));
+    optionsEl.appendChild(lab);
+  }
+}
+function hasSeries(k, f){ return !!(data && data.series && data.series[k] && data.series[k][f] && data.series[k][f].length); }
+function buildChart(){
+  if(chart){ try { chart.remove(); } catch(e){} chart = null; }
+  chartEl.style.display = "";
+  toolbarEl.innerHTML = "";
+  var candles = (opts.mode === "weekly" && data.weekly && data.weekly.candles && data.weekly.candles.length) ? data.weekly.candles : data.candles;
+  var series = (opts.mode === "weekly" && data.weekly && data.weekly.series) ? data.weekly.series : data.series;
+  var LW = window.LightweightCharts;
+  chart = LW.createChart(chartEl, {
+    layout: { background: { type: LW.ColorType.Solid, color: "#ffffff" }, textColor: "#333" },
+    grid: { vertLines: { color: "#f0f2f5" }, horzLines: { color: "#f0f2f5" } },
+    rightPriceScale: { borderColor: "#d7dbdf" },
+    timeScale: { borderColor: "#d7dbdf", timeVisible: false },
+    crosshair: { mode: 0 },
+    autoSize: true,
+  });
+  var candle = chart.addSeries(LW.CandlestickSeries, { upColor:"#e53935", downColor:"#26a69a", borderVisible:false, wickUpColor:"#e53935", wickDownColor:"#26a69a" });
+  candle.setData(candles);
+  var MA_COLORS = { MA5:"#f59e0b", MA10:"#3b82f6", MA20:"#8b5cf6", MA60:"#ef4444", MA120:"#0891b2" };
+  var ma = series.ma || {};
+  Object.keys(ma).forEach(function(k){
+    if(!opts[k]) return;
+    if(!ma[k] || !ma[k].length) return;
+    chart.addSeries(LW.LineSeries, { color: MA_COLORS[k] || "#8b5cf6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(ma[k]);
+  });
+  if(opts.boll){
+    var boll = series.boll || {};
+    var BOLL_KEYS = ["UPPER","MID","LOWER","upper","mid","lower","UP","MB","DN","上轨","中轨","下轨"];
+    BOLL_KEYS.forEach(function(k){
+      if(!boll[k] || !boll[k].length) return;
+      chart.addSeries(LW.LineSeries, { color: k==="UPPER"||k==="upper"||k==="UP"||k==="上轨" ? "#f59e0b" : k==="LOWER"||k==="lower"||k==="DN"||k==="下轨" ? "#3b82f6" : "#6b7280", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false }).setData(boll[k]);
+    });
+  }
+  var paneIdx = 1;
+  var volData = candles.map(function(c){ return { time: c.time, value: c.volume || 0, color: c.close >= c.open ? "rgba(229,57,53,0.5)" : "rgba(38,166,154,0.5)" }; });
+  var volSeries = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: "volume" }, priceLineVisible: false, lastValueVisible: false }, paneIdx);
+  volSeries.setData(volData);
+  paneIdx++;
+  if(opts.macd && series.macd && series.macd.MACD && series.macd.MACD.length){
+    var macd = series.macd;
+    var hist = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, paneIdx);
+    hist.setData(macd.MACD.map(function(p){ return { time: p.time, value: p.value, color: p.value >= 0 ? "rgba(229,57,53,0.65)" : "rgba(38,166,154,0.65)" }; }));
+    if(macd.DIF && macd.DIF.length) chart.addSeries(LW.LineSeries, { color:"#f59e0b", lineWidth:1, priceLineVisible:false, lastValueVisible:false }, paneIdx).setData(macd.DIF);
+    if(macd.DEA && macd.DEA.length) chart.addSeries(LW.LineSeries, { color:"#3b82f6", lineWidth:1, priceLineVisible:false, lastValueVisible:false }, paneIdx).setData(macd.DEA);
+    paneIdx++;
+  }
+  if(opts.kdj && series.kdj && series.kdj.K && series.kdj.K.length){
+    var kdj = series.kdj;
+    if(kdj.K && kdj.K.length) chart.addSeries(LW.LineSeries, { color:"#f59e0b", lineWidth:1, priceLineVisible:false, lastValueVisible:false }, paneIdx).setData(kdj.K);
+    if(kdj.D && kdj.D.length) chart.addSeries(LW.LineSeries, { color:"#3b82f6", lineWidth:1, priceLineVisible:false, lastValueVisible:false }, paneIdx).setData(kdj.D);
+    if(kdj.J && kdj.J.length) chart.addSeries(LW.LineSeries, { color:"#8b5cf6", lineWidth:1, priceLineVisible:false, lastValueVisible:false }, paneIdx).setData(kdj.J);
+    paneIdx++;
+  }
+  try {
+    var panes = chart.panes();
+    if(panes && panes.length >= 2){
+      panes[0].setStretchFactor(5);
+      panes[1].setStretchFactor(1);
+      if(panes.length >= 3) panes[2].setStretchFactor(3);
+      if(panes.length >= 4) panes[3].setStretchFactor(3);
+    }
+  } catch(e){}
+  var lastC = candles[candles.length - 1];
+  var prevC = candles.length > 1 ? candles[candles.length - 2] : null;
+  var chg = prevC && prevC.close ? ((lastC.close - prevC.close) / prevC.close) * 100 : null;
+  lastEl.textContent = "收盘 " + lastC.close + (chg===null||chg===undefined ? "" : (chg>=0?"  +":"  ") + chg + "%");
+  lastEl.className = (chg!==null && chg!==undefined) ? (chg>=0?"up":"down") : "";
+  chart.timeScale().fitContent();
+  buildToolbar(candle);
+}
+function buildToolbar(candle){
+  var DW = window.LightweightChartsDrawing;
+  if(!DW){ return; }
+  var manager;
+  try { manager = new DW.DrawingManager(); manager.attach(chart, candle, chartEl); } catch(e){ console.error(e); return; }
+  var registry = DW.getToolRegistry();
+  var tools = typeof registry.getAll === "function" ? registry.getAll() : [];
+  var activeTool = null, pending = [], idc = 0;
+  var CATS = {};
+  tools.forEach(function(t){ (CATS[t.category] = CATS[t.category] || []).push(t); });
+  Object.keys(CATS).forEach(function(cat){
+    var d = document.createElement("details");
+    var s = document.createElement("summary"); s.textContent = cat + " (" + CATS[cat].length + ")";
+    var box = document.createElement("div"); box.className="catbox";
+    CATS[cat].forEach(function(t){
+      var b = document.createElement("button"); b.textContent = t.name; b.title = t.type;
+      b.onclick = function(){
+        if(activeTool === t.type){ activeTool = null; pending = []; b.classList.remove("active"); return; }
+        activeTool = t.type; pending = [];
+        toolbarEl.querySelectorAll("button.active").forEach(function(x){ x.classList.remove("active"); });
+        b.classList.add("active");
+      };
+      box.appendChild(b);
+    });
+    d.appendChild(s); d.appendChild(box); toolbarEl.appendChild(d);
+  });
+  var clearBtn = document.createElement("button"); clearBtn.textContent = "清空绘制";
+  clearBtn.onclick = function(){ try { manager.clearAll(); } catch(e){} };
+  toolbarEl.appendChild(clearBtn);
+  var delBtn = document.createElement("button"); delBtn.textContent = "删除选中";
+  delBtn.onclick = function(){ try { var s = manager.getSelectedDrawing(); if(s) manager.removeDrawing(s.id); } catch(e){} };
+  toolbarEl.appendChild(delBtn);
+  var expBtn = document.createElement("button"); expBtn.textContent = "导出JSON";
+  expBtn.onclick = function(){
+    try {
+      var json = JSON.stringify(manager.exportDrawings(), null, 2);
+      navigator.clipboard.writeText(json).then(function(){ expBtn.textContent="已复制"; setTimeout(function(){ expBtn.textContent="导出JSON"; }, 1500); });
+    } catch(e){}
+  };
+  toolbarEl.appendChild(expBtn);
+  chartEl.addEventListener("click", function(ev){
+    if(!activeTool) return;
+    var rect = chartEl.getBoundingClientRect();
+    var time = chart.timeScale().coordinateToTime(ev.clientX - rect.left);
+    var price = candle.coordinateToPrice(ev.clientY - rect.top);
+    if(time === null || price === null) return;
+    pending.push({ time: time, price: price });
+    var def = registry.get ? registry.get(activeTool) : null;
+    var need = (def && def.requiredAnchors) || 2;
+    if(pending.length < need) return;
+    var drawing = registry.createDrawing(activeTool, "d" + (++idc), pending.slice(), { lineColor: "#2962FF", lineWidth: 2, fillColor: "rgba(41,98,255,0.12)" });
+    pending = [];
+    if(drawing){ manager.addDrawing(drawing); manager.selectDrawing(drawing.id); }
+    activeTool = null;
+    toolbarEl.querySelectorAll("button.active").forEach(function(x){ x.classList.remove("active"); });
+  });
+  document.addEventListener("keydown", function(ev){
+    if(ev.key === "Escape"){ activeTool = null; pending = []; toolbarEl.querySelectorAll("button.active").forEach(function(x){ x.classList.remove("active"); }); }
+    if(ev.key === "Delete" || ev.key === "Backspace"){ try { var s = manager.getSelectedDrawing(); if(s) manager.removeDrawing(s.id); } catch(e){} }
+  });
+}
+function rebuild(){ if(data){ buildChart(); } }
+function render(d){
+  data = d;
+  nameEl.textContent = d.name || d.symbol;
+  var chg = d.changePct;
+  lastEl.textContent = "收盘 " + d.last.close + (chg===null||chg===undefined ? "" : (chg>=0?"  +":"  ") + chg + "%");
+  lastEl.className = (chg!==null && chg!==undefined) ? (chg>=0?"up":"down") : "";
+  if(!window.LightweightCharts){ fail("lightweight-charts 加载失败（需外网访问 jsdelivr）"); return; }
+  buildOptions();
+  buildChart();
+}
+fetch("/api/stkchart/data?symbol=" + encodeURIComponent(symbol))
+  .then(function(r){ return r.json(); })
+  .then(function(res){
+    if(res && res.ok && res.data){
+      try { localStorage.setItem(DATA_KEY, JSON.stringify(res.data)); } catch(e){}
+      render(res.data);
+    } else {
+      try {
+        var c = localStorage.getItem(DATA_KEY);
+        if(c){ var cd = JSON.parse(c); cacheEl.style.display="block"; cacheEl.textContent = "（缓存数据，Host 暂未提供最新推送）"; render(cd); return; }
+      } catch(e){}
+      fail((res && res.error) || "无数据，请先用 stock_chart_push 推送数据");
+    }
+  })
+  .catch(function(e){
+    try {
+      var c = localStorage.getItem(DATA_KEY);
+      if(c){ var cd = JSON.parse(c); cacheEl.style.display="block"; cacheEl.textContent = "（缓存数据，网络/服务暂不可用）"; render(cd); return; }
+    } catch(e2){}
+    fail("加载数据失败: " + e.message);
+  });
+})();
+</script>
+</body>
+</html>

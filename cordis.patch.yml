@@ -1,0 +1,7 @@
+﻿# dsh bundle layer: mount the dsh-stock-chart entry. The host half serves the
+# same-origin chart page / API under /api/stkchart and registers the
+# stock_chart_push dynamic tool; the browser half (dsh/client.js) renders the
+# chart iframe inside the tool call card.
+- insert:
+    - id: dsh-stock-chart
+      name: 'dsh-stock-chart'
